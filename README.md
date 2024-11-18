@@ -4,7 +4,7 @@ Here is how I organize my playlists:
 
 Collection   
 Playlists  
-  event-playlist  
+&emsp;event-playlist  
   FOLDERS  
     genre-subfolder  
       year-playlist  
