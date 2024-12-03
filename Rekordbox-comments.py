@@ -52,7 +52,7 @@ def update_comments(root, track_tag="TRACK"):
             for track in node.findall(f".//{track_tag}"):
                 key = track.get("Key")
                 if key:
-                    track_to_tags.setdefault(key, []).append(playlist_tag)
+                    track_to_tags.setdefault(key, set()).add(playlist_tag)
 
         # If it's a folder, process its sub-playlists
         elif node_type == "0":  # Folder
@@ -62,7 +62,9 @@ def update_comments(root, track_tag="TRACK"):
                     for track in sub_node.findall(f".//{track_tag}"):
                         key = track.get("Key")
                         if key:
-                            track_to_tags.setdefault(key, []).append(folder_tag)
+                            track_to_tags.setdefault(key, set()).add(folder_tag)                        
+    # Convert sets back to lists for processing later
+    track_to_tags = {key: list(tags) for key, tags in track_to_tags.items()}
     print(f"Track-to-Tags Mapping: {track_to_tags}")
 
     # Step 2: Update Tracks in <COLLECTION>
@@ -76,77 +78,83 @@ def update_comments(root, track_tag="TRACK"):
         if track_id in track_to_tags:
             tags = " ".join(track_to_tags[track_id])
             current_comment = track.get("Comments", "").strip()
-            print(f"Current Comments: {current_comment}, New Tags: {tags}")  # Debugging
-            if tags not in current_comment:
-                updated_comment = f"{tags} // {current_comment}".strip()
-                track.set("Comments", updated_comment)
-                print(f"Updated track {track_id} with comment: {updated_comment}")
 
-def identify_duplicates(root, folders_node, track_tag="TRACK"):
-    """
-    Identifies tracks that are in multiple playlists within the same folder and prints their details,
-    including the track name and dateAdded from the <COLLECTION> section.
+            # Retain existing comment if "/*/" is not found, otherwise keep only the part after "//"
+            if "/*/" in current_comment:
+                current_comment = current_comment.split("/*/", 1)[1].strip()
 
-    Parameters:
-    - root: The root XML node of the entire Rekordbox XML tree.
-    - folders_node: The <FOLDERS> node from the XML structure.
-    - track_tag: XML tag representing tracks (default: "TRACK").
-    """
-    # Locate the COLLECTION node
-    collection_node = root.find(".//COLLECTION")
-    if not collection_node:
-        print("<COLLECTION> node not found. Exiting.")
-        return
+            # Only add tags not already present
+            # new_tags = [tag for tag in tags.split() if tag not in current_comment]
+            # if new_tags:
+            updated_comment = f"{tags} /*/ {current_comment}".strip()
+            track.set("Comments", updated_comment)
+            print(f"Updated track {track_id} with comment: {updated_comment}")
 
-    # Build a map of TrackID -> {Name, DateAdded}
-    track_data = {}
-    for track in collection_node.findall(f".//{track_tag}"):
-        track_id = track.get("TrackID")
-        track_name = track.get("Name", "Unknown Name")
-        date_added = track.get("DateAdded", "Unknown Date")
-        if track_id:
-            track_data[track_id] = {"Name": track_name, "DateAdded": date_added}
+# def identify_duplicates(root, folders_node, track_tag="TRACK"):
+#     """
+#     Identifies tracks that are in multiple playlists within the same folder and prints their details,
+#     including the track name and dateAdded from the <COLLECTION> section.
 
-    # Tracks in multiple playlists within the same folder
-    duplicates = []
+#     Parameters:
+#     - root: The root XML node of the entire Rekordbox XML tree.
+#     - folders_node: The <FOLDERS> node from the XML structure.
+#     - track_tag: XML tag representing tracks (default: "TRACK").
+#     """
+#     # Locate the COLLECTION node
+#     collection_node = root.find(".//COLLECTION")
+#     if not collection_node:
+#         print("<COLLECTION> node not found. Exiting.")
+#         return
 
-    # Traverse folders
-    for folder in folders_node.findall("./NODE"):  # Top-level folders
-        folder_name = folder.get("Name")
-        folder_tracks = {}  # Map of Track Key -> [playlist names]
+#     # Build a map of TrackID -> {Name, DateAdded}
+#     track_data = {}
+#     for track in collection_node.findall(f".//{track_tag}"):
+#         track_id = track.get("TrackID")
+#         track_name = track.get("Name", "Unknown Name")
+#         date_added = track.get("DateAdded", "Unknown Date")
+#         if track_id:
+#             track_data[track_id] = {"Name": track_name, "DateAdded": date_added}
 
-        for playlist in folder.findall("./NODE"):  # Playlists within this folder
-            if playlist.get("Type") == "1":  # Playlist
-                playlist_name = playlist.get("Name")
-                for track in playlist.findall(f".//{track_tag}"):
-                    key = track.get("Key")  # Use Key for playlist tracks
-                    if key:
-                        # Add playlist name to track's list
-                        if key not in folder_tracks:
-                            folder_tracks[key] = []
-                        folder_tracks[key].append(playlist_name)
+#     # Tracks in multiple playlists within the same folder
+#     duplicates = []
 
-        # Check for duplicates within this folder
-        for key, playlists in folder_tracks.items():
-            if len(playlists) > 1:  # Found a duplicate
-                track_info = track_data.get(key, {"Name": "Unknown Name", "DateAdded": "Unknown Date"})
-                duplicates.append({
-                    "TrackName": track_info["Name"],
-                    "DateAdded": track_info["DateAdded"],
-                    "Playlists": playlists,
-                    "Folder": folder_name,
-                })
+#     # Traverse folders
+#     for folder in folders_node.findall("./NODE"):  # Top-level folders
+#         folder_name = folder.get("Name")
+#         folder_tracks = {}  # Map of Track Key -> [playlist names]
 
-    # Print duplicates
-    if duplicates:
-        print("\nTracks in multiple playlists within the same folder:")
-        for dup in duplicates:
-            print(f"Track Name: {dup['TrackName']}")
-            print(f"Date Added: {dup['DateAdded']}")
-            print(f"Folder: {dup['Folder']}")
-            print(f"Playlists: {', '.join(dup['Playlists'])}\n")
-    else:
-        print("No duplicates found.")
+#         for playlist in folder.findall("./NODE"):  # Playlists within this folder
+#             if playlist.get("Type") == "1":  # Playlist
+#                 playlist_name = playlist.get("Name")
+#                 for track in playlist.findall(f".//{track_tag}"):
+#                     key = track.get("Key")  # Use Key for playlist tracks
+#                     if key:
+#                         # Add playlist name to track's list
+#                         if key not in folder_tracks:
+#                             folder_tracks[key] = []
+#                         folder_tracks[key].append(playlist_name)
+
+#         # Check for duplicates within this folder
+#         for key, playlists in folder_tracks.items():
+#             if len(playlists) > 1:  # Found a duplicate
+#                 track_info = track_data.get(key, {"Name": "Unknown Name", "DateAdded": "Unknown Date"})
+#                 duplicates.append({
+#                     "TrackName": track_info["Name"],
+#                     "DateAdded": track_info["DateAdded"],
+#                     "Playlists": playlists,
+#                     "Folder": folder_name,
+#                 })
+
+#     # Print duplicates
+#     if duplicates:
+#         print("\nTracks in multiple playlists within the same folder:")
+#         for dup in duplicates:
+#             print(f"Track Name: {dup['TrackName']}")
+#             print(f"Date Added: {dup['DateAdded']}")
+#             print(f"Folder: {dup['Folder']}")
+#             print(f"Playlists: {', '.join(dup['Playlists'])}\n")
+#     else:
+#         print("No duplicates found.")
 
 def select_xml_file():
     """
@@ -214,9 +222,9 @@ if __name__ == "__main__":
         print("FOLDERS node not found. Exiting.")
         exit()
 
-    # Step 4: Identify duplicates (runs before updating comments)
-    print("Checking for duplicates...")
-    identify_duplicates(root, folders_node)
+    # # Step 4: Identify duplicates (runs before updating comments)
+    # print("Checking for duplicates...")
+    # identify_duplicates(root, folders_node)
 
     # Step 5: Edit the XML
     print("Updating comments...")
