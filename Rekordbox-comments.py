@@ -1,5 +1,11 @@
 import xml.etree.ElementTree as ET
+import os
 from tkinter import Tk, filedialog
+
+# Define your fixed input/output paths
+XML_INPUT_PATH = os.path.expanduser("~/Dropbox/rekordbox_XML/rekordbox.xml")  
+XML_OUTPUT_PATH = os.path.expanduser("~/Dropbox/rekordbox_XML/rekordbox_updated.xml")  
+
 def update_comments(root, track_tag="TRACK"):
     """
     Updates the comment field of tracks in Rekordbox XML based on folder or playlist hierarchy, 
@@ -43,7 +49,7 @@ def update_comments(root, track_tag="TRACK"):
         node_type = node.get("Type")
 
         # Skip numeric names or "Slow BPM"
-        if parent_name.isdigit() or parent_name.lower() == "slow bpm":
+        if parent_name.isdigit() or parent_name.lower() in ("slow bpm", "albums"):
             continue
 
         # If it's a playlist, add its tag to associated tracks
@@ -200,17 +206,13 @@ def save_updated_xml(tree):
         print("Save operation cancelled. No changes were written.")
 
 if __name__ == "__main__":
-    # Step 1: Select XML file
-    xml_file_path = select_xml_file()
-    if not xml_file_path:
-        exit()
-
-    # Step 2: Parse the XML file
-    tree = parse_xml(xml_file_path)
+    # Step 1: Parse the XML input file
+    print(f"Loading XML from: {XML_INPUT_PATH}")
+    tree = parse_xml(XML_INPUT_PATH)
     if not tree:
         exit()
 
-    # Step 3: Locate FOLDERS node
+    # Step 2: Locate FOLDERS node
     root = tree.getroot()
     folders_node = None
     for node in root.findall(".//NODE"):
@@ -222,13 +224,14 @@ if __name__ == "__main__":
         print("FOLDERS node not found. Exiting.")
         exit()
 
-    # # Step 4: Identify duplicates (runs before updating comments)
+    # Identify duplicates (runs before updating comments)
     # print("Checking for duplicates...")
     # identify_duplicates(root, folders_node)
 
-    # Step 5: Edit the XML
+    # Step 3: Edit the XML
     print("Updating comments...")
     update_comments(root)
 
-    # Step 6: Save the updated XML file
-    save_updated_xml(tree)
+    # Step 4: Save updated XML to fixed output path
+    tree.write(XML_OUTPUT_PATH, encoding="UTF-8", xml_declaration=True)
+    print(f"Updated XML saved to: {XML_OUTPUT_PATH}")
